@@ -1,0 +1,46 @@
+name: Vehicle App CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/eclipse-velocitas/devcontainer-base-images/cpp:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Show tool versions
+        run: |
+          conan --version
+          cmake --version
+          gcc --version
+
+      - name: Install dependencies
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          chmod +x install_dependencies.sh
+          ./install_dependencies.sh
+
+      - name: Build SDK
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Run tests (if present)
+        working-directory: vehicle-app-cpp-sdk/build-linux-x86_64/Debug
+        run: |
+          if [ -f CTestTestfile.cmake ]; then
+            ctest --output-on-failure
+          else
+            echo "No tests found."
+          fi
