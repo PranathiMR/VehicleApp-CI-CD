@@ -7,6 +7,7 @@ on:
 
 jobs:
   build:
+    name: Build SDK and Run Tests
     runs-on: ubuntu-latest
 
     container:
@@ -44,3 +45,42 @@ jobs:
           else
             echo "No tests found."
           fi
+
+  build-seat-adjuster:
+    name: Build Seat Adjuster App
+    runs-on: ubuntu-latest
+
+    container:
+      image: ghcr.io/eclipse-velocitas/devcontainer-base-images/cpp:latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Show tool versions
+        run: |
+          conan --version
+          cmake --version
+          gcc --version
+
+      - name: Install dependencies
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          chmod +x install_dependencies.sh
+          ./install_dependencies.sh
+
+      - name: Configure Seat Adjuster
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          cmake -S . -B build-seat \
+            -DSDK_BUILD_EXAMPLES=ON \
+            -DSDK_BUILD_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Debug/generators/conan_toolchain.cmake
+
+      - name: Build Seat Adjuster only
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          cmake --build build-seat --target example-seatadjusterapp
