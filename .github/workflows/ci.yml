@@ -47,7 +47,7 @@ jobs:
           fi
 
   build-seat-adjuster:
-    name: Build Seat Adjuster App + Clang-Tidy
+    name: Build Seat Adjuster App + Static Analysis
     runs-on: ubuntu-latest
 
     container:
@@ -65,6 +65,7 @@ jobs:
           cmake --version
           gcc --version
           clang-tidy --version
+          cppcheck --version
 
       - name: Install dependencies
         working-directory: vehicle-app-cpp-sdk
@@ -95,3 +96,12 @@ jobs:
             examples/seat-adjuster/src/SeatAdjusterApp.cpp \
             --header-filter=examples/seat-adjuster/ \
             || true
+
+      - name: Run cppcheck on Seat Adjuster
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          cppcheck \
+            --enable=warning,performance,portability \
+            --error-exitcode=1 \
+            --std=c++17 \
+            examples/seat-adjuster
