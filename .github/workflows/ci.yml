@@ -47,7 +47,7 @@ jobs:
           fi
 
   build-seat-adjuster:
-    name: Build Seat Adjuster App
+    name: Build Seat Adjuster App + Clang-Tidy
     runs-on: ubuntu-latest
 
     container:
@@ -64,6 +64,7 @@ jobs:
           conan --version
           cmake --version
           gcc --version
+          clang-tidy --version
 
       - name: Install dependencies
         working-directory: vehicle-app-cpp-sdk
@@ -71,16 +72,26 @@ jobs:
           chmod +x install_dependencies.sh
           ./install_dependencies.sh
 
-      - name: Configure Seat Adjuster
+      - name: Configure Seat Adjuster (export compile commands)
         working-directory: vehicle-app-cpp-sdk
         run: |
           cmake -S . -B build-seat \
             -DSDK_BUILD_EXAMPLES=ON \
             -DSDK_BUILD_TESTS=OFF \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Debug/generators/conan_toolchain.cmake
 
       - name: Build Seat Adjuster only
         working-directory: vehicle-app-cpp-sdk
         run: |
           cmake --build build-seat --target example-seatadjusterapp
+
+      - name: Run clang-tidy on Seat Adjuster
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          clang-tidy \
+            -p build-seat \
+            examples/seat-adjuster/src/SeatAdjusterApp.cpp \
+            --header-filter=examples/seat-adjuster/ \
+            || true
