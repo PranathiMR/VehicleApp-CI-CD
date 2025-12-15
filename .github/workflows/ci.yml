@@ -105,3 +105,8 @@ jobs:
             --error-exitcode=1 \
             --std=c++17 \
             examples/seat-adjuster
+
+      - name: Run Seat Adjuster unit tests
+        working-directory: vehicle-app-cpp-sdk/build-seat
+        run: |
+          ctest --output-on-failure
