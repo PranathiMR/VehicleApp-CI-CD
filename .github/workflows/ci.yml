@@ -148,11 +148,11 @@ jobs:
         run: |
           docker build -t vehicle-app:ci .
 
-     - name: Run Trivy scan (fail only on HIGH,CRITICAL)
-       uses: aquasecurity/trivy-action@0.20.0
-       with:
-         image-ref: vehicle-app:ci
-         format: table
-         exit-code: 1
-         severity: HIGH,CRITICAL
+      - name: Run Trivy scan (fail only on HIGH,CRITICAL)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: vehicle-app:ci
+          format: table
+          exit-code: 1
+          severity: HIGH,CRITICAL
 
