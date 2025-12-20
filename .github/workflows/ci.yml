@@ -47,7 +47,7 @@ jobs:
           fi
 
   build-seat-adjuster:
-    name: Build Seat Adjuster App + Static Analysis
+    name: Build Seat Adjuster + Static Analysis + Docker + Trivy
     runs-on: ubuntu-latest
 
     container:
@@ -73,22 +73,22 @@ jobs:
           chmod +x install_dependencies.sh
           ./install_dependencies.sh
 
-      - name: Configure Seat Adjuster (export compile commands)
+      - name: Configure Seat Adjuster
         working-directory: vehicle-app-cpp-sdk
         run: |
           cmake -S . -B build-seat \
             -DSDK_BUILD_EXAMPLES=ON \
             -DSDK_BUILD_TESTS=OFF \
-            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Debug/generators/conan_toolchain.cmake
 
-      - name: Build Seat Adjuster only
+      - name: Build Seat Adjuster
         working-directory: vehicle-app-cpp-sdk
         run: |
           cmake --build build-seat --target example-seatadjusterapp
 
-      - name: Run clang-tidy on Seat Adjuster
+      - name: Run clang-tidy
         working-directory: vehicle-app-cpp-sdk
         run: |
           clang-tidy \
@@ -97,7 +97,7 @@ jobs:
             --header-filter=examples/seat-adjuster/ \
             || true
 
-      - name: Run cppcheck on Seat Adjuster
+      - name: Run cppcheck
         working-directory: vehicle-app-cpp-sdk
         run: |
           cppcheck \
@@ -106,35 +106,24 @@ jobs:
             --std=c++17 \
             examples/seat-adjuster
 
-      - name: Run Seat Adjuster unit tests
+      - name: Run unit tests
         working-directory: vehicle-app-cpp-sdk/build-seat
         run: |
           ctest --output-on-failure
 
-  docker-and-security-scan:
-    name: Docker Build & Trivy Security Scan
-    runs-on: ubuntu-latest
+      # ---------------------------
+      # Docker + Security Scan
+      # ---------------------------
 
-    # This ensures Docker & scan only run if build-seat-adjuster succeeds
-    needs: build-seat-adjuster
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      # Docker is already available on GitHub-hosted runners
       - name: Build Docker image
         run: |
           docker build -t vehicle-app:ci .
 
       - name: Install Trivy
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget -qO- https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.tar.gz \
-            | tar zxvf - -C /usr/local/bin trivy
+          wget -q https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.tar.gz
+          tar -xzf trivy_0.50.0_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
 
       - name: Run Trivy scan (fail only on HIGH,CRITICAL)
         run: |
