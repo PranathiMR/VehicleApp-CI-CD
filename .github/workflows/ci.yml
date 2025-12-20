@@ -110,3 +110,36 @@ jobs:
         working-directory: vehicle-app-cpp-sdk/build-seat
         run: |
           ctest --output-on-failure
+
+  docker-and-security-scan:
+    name: Docker Build & Trivy Security Scan
+    runs-on: ubuntu-latest
+
+    # This ensures Docker & scan only run if build-seat-adjuster succeeds
+    needs: build-seat-adjuster
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Docker is already available on GitHub-hosted runners
+      - name: Build Docker image
+        run: |
+          docker build -t vehicle-app:ci .
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget -qO- https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.50.0_Linux-64bit.tar.gz \
+            | tar zxvf - -C /usr/local/bin trivy
+
+      - name: Run Trivy scan (fail only on HIGH,CRITICAL)
+        run: |
+          trivy image \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --no-progress \
+            vehicle-app:ci
