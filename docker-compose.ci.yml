@@ -3,7 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ci
-    # Force the environment variables here to be 100% sure
+    # --- ADD THIS COMMAND OVERRIDE ---
+    # Wait 10 seconds for Mosquitto to be ready, THEN start the app
+    command: ["sh", "-c", "echo 'Waiting for Mosquitto...' && sleep 10 && /app/bin/example-seatadjusterapp & sleep infinity"]
+    # ---------------------------------
     environment:
       - SDV_MQTT_ADDRESS=mosquitto:1883
       - MQTT_BROKER_HOST=mosquitto
