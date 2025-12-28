@@ -1,0 +1,9 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache netcat-openbsd
+
+WORKDIR /tests
+COPY test.sh .
+RUN chmod +x test.sh
+
+CMD ["./test.sh"]

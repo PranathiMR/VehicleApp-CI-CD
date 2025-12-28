@@ -1,0 +1,24 @@
+services:
+  kuksa-databroker:
+    image: ghcr.io/eclipse/kuksa-databroker:0.6.0
+    container_name: kuksa-databroker
+    ports:
+      - "55555:55555"
+    command: >
+      --insecure
+      --vss vss_release_5.1.json
+
+  seat-adjuster:
+    image: seat-adjuster:local
+    build:
+      context: ./seat-adjuster
+    depends_on:
+      - kuksa-databroker
+
+  integration-test-runner:
+    image: integration-test-runner:local
+    build:
+      context: ./integration-test
+    depends_on:
+      - kuksa-databroker
+    command: ["python", "test.py"]

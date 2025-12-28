@@ -1,0 +1,46 @@
+{
+  "Vehicle": {
+    "type": "branch",
+    "description": "The vehicle root",
+    "children": {
+      "Speed": {
+        "type": "sensor",
+        "datatype": "float",
+        "unit": "km/h",
+        "description": "Vehicle Speed"
+      },
+      "Cabin": {
+        "type": "branch",
+        "description": "The vehicle cabin",
+        "children": {
+          "Seat": {
+            "type": "branch",
+            "description": "Seats in the cabin",
+            "children": {
+              "Row1": {
+                "type": "branch",
+                "description": "Row 1",
+                "children": {
+                  "Pos1": {
+                    "type": "branch",
+                    "description": "Position 1",
+                    "children": {
+                      "Position": {
+                        "type": "actuator",
+                        "datatype": "uint8",
+                        "unit": "percent",
+                        "min": 0,
+                        "max": 100,
+                        "description": "Seat position on the longitudinal axis"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

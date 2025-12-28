@@ -1,0 +1,5 @@
+services:
+  seat-adjuster:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci

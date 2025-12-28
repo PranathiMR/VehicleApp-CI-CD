@@ -1,0 +1,56 @@
+services:
+  # --- 1. The Data Hub ---
+  kuksa-databroker:
+    image: ghcr.io/eclipse-kuksa/kuksa-databroker:0.6.0
+    container_name: kuksa-databroker
+    # Tell the broker to load our custom file
+    command: ["--insecure", "--metadata", "/vss.json"]
+    ports:
+      - "55555:55555"
+    volumes:
+      # Mount the local file into the container
+      - ./vss.json:/vss.json
+    restart: unless-stopped
+
+  # --- 2. The MQTT Broker (NEW) ---
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  # --- 3. The Application ---
+  seat-adjuster:
+    image: seat-adjuster:local
+    container_name: seat-adjuster
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    # --- FIX START ---
+    # Run the app in the background, then wait forever so the container stays up.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["/app/bin/example-seatadjusterapp & sleep infinity"]
+    # --- FIX END ---
+    environment:
+      - VEHICLEDATABROKER_ADDR=kuksa-databroker:55555
+      - SDV_VEHICLEDATABROKER_ADDRESS=kuksa-databroker:55555
+      - SDV_MQTT_ADDRESS=mosquitto:1883
+    depends_on:
+      - kuksa-databroker
+      - mosquitto
+  
+  # --- 4. The Test Runner ---
+  integration-test-runner:
+    container_name: integration-test-runner
+    build: 
+      context: ./integration-test-runner
+    environment:
+      - PYTHONUNBUFFERED=1
+      - BROKER_HOST=kuksa-databroker
+      - BROKER_PORT=55555
+    depends_on:
+      - kuksa-databroker
+      - seat-adjuster

@@ -1,0 +1,16 @@
+FROM ubuntu:22.04
+
+WORKDIR /app
+
+# Install runtime libraries
+RUN apt-get update && apt-get install -y libstdc++6 && rm -rf /var/lib/apt/lists/*
+
+# Copy the pre-built binary from the GitHub Actions artifact path
+# Note: This path matches where we tell GHA to download the artifact
+COPY vehicle-app-cpp-sdk/build-seat/bin/ /app/bin/
+
+# Expose ports
+EXPOSE 55555
+
+# Run the specific app binary
+CMD ["/app/bin/example-seatadjusterapp"]
