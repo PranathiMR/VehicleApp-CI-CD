@@ -13,3 +13,11 @@ services:
       - MQTT_BROKER_PORT=1883
       - VEHICLEDATABROKER_ADDR=kuksa-databroker:55555
       - SDV_VEHICLEDATABROKER_ADDRESS=kuksa-databroker:55555
+
+  integration-test-runner:
+    environment:
+      # Tell the Python script to use the container name, NOT localhost
+      - BROKER_HOST=kuksa-databroker
+      - BROKER_PORT=55555
+      # Ensure output isn't buffered so we see logs instantly
+      - PYTHONUNBUFFERED=1
