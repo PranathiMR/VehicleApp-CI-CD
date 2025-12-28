@@ -156,14 +156,17 @@ jobs:
           exit-code: 1
           severity: HIGH,CRITICAL
 
-# -------------------------------------------------
+  # -------------------------------------------------
   # 4. Integration Tests (Docker Compose)
   # -------------------------------------------------
   integration-test:
     name: Run Integration Tests
     runs-on: ubuntu-latest
-    needs: build-seat-adjuster  # We rely on the binary built here
-    
+    needs: build-seat-adjuster
+    permissions:
+      contents: read
+      packages: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -174,17 +177,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: seat-adjuster-bin
-          # We download it to the exact path Dockerfile.ci expects
           path: vehicle-app-cpp-sdk/build-seat/bin
 
       - name: Setup Configuration Files
-        # Generate the required config files dynamically
         run: |
           # 1. Create mosquitto.conf
           echo "listener 1883" > mosquitto.conf
           echo "allow_anonymous true" >> mosquitto.conf
 
-          # 2. Create vss.json (The one we fixed together)
+          # 2. Create vss.json
           cat <<EOF > vss.json
           {
             "Vehicle": {
@@ -234,8 +235,16 @@ jobs:
           }
           EOF
 
+      # --- THIS IS THE FIX ---
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # -----------------------
+
       - name: Run Integration Test
-        # We use -f to combine the base config with the CI override
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build --exit-code-from integration-test-runner
 
@@ -246,4 +255,3 @@ jobs:
       - name: Teardown
         if: always()
         run: docker compose down
-
