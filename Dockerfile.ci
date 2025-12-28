@@ -9,6 +9,11 @@ RUN apt-get update && apt-get install -y libstdc++6 && rm -rf /var/lib/apt/lists
 # Note: This path matches where we tell GHA to download the artifact
 COPY vehicle-app-cpp-sdk/build-seat/bin/ /app/bin/
 
+# --- FIX START ---
+# Force the binary to be executable
+RUN chmod +x /app/bin/example-seatadjusterapp
+# --- FIX END ---
+
 # Expose ports
 EXPOSE 55555
 
