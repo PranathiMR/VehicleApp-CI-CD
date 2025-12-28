@@ -35,11 +35,13 @@ services:
     command: ["/app/bin/example-seatadjusterapp & sleep infinity"]
     # --- FIX END ---
     environment:
-      - VEHICLEDATABROKER_ADDR=kuksa-databroker:55555
-      - SDV_VEHICLEDATABROKER_ADDRESS=kuksa-databroker:55555
       - SDV_MQTT_ADDRESS=mosquitto:1883
       - MQTT_BROKER_HOST=mosquitto
       - MQTT_BROKER_PORT=1883
+      
+      - VEHICLEDATABROKER_ADDR=kuksa-databroker:55555
+      - SDV_VEHICLEDATABROKER_ADDRESS=kuksa-databroker:55555
+      
     depends_on:
       - kuksa-databroker
       - mosquitto
