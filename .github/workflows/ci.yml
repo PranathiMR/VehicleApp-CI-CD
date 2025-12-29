@@ -235,23 +235,41 @@ jobs:
           }
           EOF
 
-      # --- THIS IS THE FIX ---
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # -----------------------
+
+      # --- CHANGED: Setup Artifact Directory ---
+      - name: Create Log Directory
+        run: mkdir -p test-artifacts
 
       - name: Run Integration Test
+        id: run_tests
         run: |
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build --exit-code-from integration-test-runner
 
-      - name: Dump Docker Logs (On Failure)
-        if: failure()
-        run: docker compose logs
+      # --- CHANGED: Dump logs to file and upload ---
+      - name: Dump Docker Logs to File
+        if: always()
+        run: |
+          # Save full logs to a text file for download
+          docker compose logs > test-artifacts/docker_full_logs.txt
+          
+          # Print last 100 lines to console for quick checks
+          echo "=== LAST 100 LINES OF LOGS ==="
+          tail -n 100 test-artifacts/docker_full_logs.txt
 
       - name: Teardown
         if: always()
         run: docker compose down
+
+      - name: Upload Logs as Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-logs
+          path: test-artifacts/
+          retention-days: 5
