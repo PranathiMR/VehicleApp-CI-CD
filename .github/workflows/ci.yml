@@ -338,3 +338,55 @@ jobs:
           # These tags (sha-xxxxx and latest) ensure traceability
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+    # -------------------------------------------------
+  # 6. Deploy to S-CORE (Hardware Agnostic)
+  # -------------------------------------------------
+  deploy-score:
+    name: Deploy to S-CORE Target
+    # CRITICAL: We look for ANY device with the label 'score-target'
+    runs-on: [self-hosted, score-target]
+    needs: release-image
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      # 1. Login to Registry (Using the runner's temporary token)
+      # This allows the device (Laptop or S-CORE) to pull your private image
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # 2. Pull the Exact Version
+      # We pull the specific SHA tag created in the previous stage
+      - name: Pull Release Image
+        run: docker pull ghcr.io/${{ github.repository }}/vehicle-app:sha-${{ github.sha }}
+
+      # 3. Stop Old Container (Cleanup)
+      # '|| true' prevents failure if the container is not running yet
+      - name: Stop Previous Deployment
+        run: |
+          docker stop seat-adjuster || true
+          docker rm seat-adjuster || true
+
+      # 4. Run New Container
+      # We use '--network host' to ensure connection to the vehicle network
+      - name: Start Application
+        run: |
+          docker run -d \
+            --name seat-adjuster \
+            --restart unless-stopped \
+            --network host \
+            -e SDV_MQTT_ADDRESS=mosquitto:1883 \
+            ghcr.io/${{ github.repository }}/vehicle-app:sha-${{ github.sha }}
+
+      # 5. Verification
+      - name: Verify Deployment
+        run: |
+          sleep 5
+          # Check if the container is still running
+          if [ "$(docker inspect -f '{{.State.Running}}' seat-adjuster)" = "true" ]; then
+            echo "✅ S-CORE Deployment Successful"
+          else
+            echo "❌ Failed to start on S-CORE"
+            docker logs seat-adjuster
+            exit 1
+          fi
