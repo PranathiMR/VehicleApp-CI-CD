@@ -273,3 +273,68 @@ jobs:
           name: integration-test-logs
           path: test-artifacts/
           retention-days: 5
+
+  # -------------------------------------------------
+  # 5. Release Pipeline (Covers Stages 2.8 & 2.9)
+  # -------------------------------------------------
+  release-image:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    # Run only if tests pass AND we are on the 'main' branch
+    needs: [integration-test, docker-and-security]
+    if: github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      packages: write  # Required to push to GHCR
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # -------------------------------------------------
+      # STAGE 2.8 PREP: Get the binary
+      # We need the compiled C++ binary to build the final image
+      # -------------------------------------------------
+      - name: Download Seat Adjuster Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: seat-adjuster-bin
+          path: vehicle-app-cpp-sdk/build-seat/bin
+
+      # -------------------------------------------------
+      # STAGE 2.8: Build and Tag Release
+      # We prepare the tags (SHA for traceability, Latest for convenience)
+      # -------------------------------------------------
+      - name: Generate Docker Metadata (Tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/vehicle-app
+          tags: |
+            type=raw,value=latest
+            type=sha,format=long
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------------------------------------------------
+      # STAGE 2.9: Publish to Registry
+      # We build the image using the PROD Dockerfile and push immediately
+      # -------------------------------------------------
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # Use the standard production Dockerfile (not .ci)
+          file: Dockerfile
+          push: true
+          # These tags (sha-xxxxx and latest) ensure traceability
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
