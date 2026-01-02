@@ -349,6 +349,10 @@ jobs:
     needs: release-image
     if: github.ref == 'refs/heads/main'
 
+    permissions:
+      contents: read
+      packages: read
+
     steps:
       # 1. Login to Registry (Using the runner's temporary token)
       # This allows the device (Laptop or S-CORE) to pull your private image
