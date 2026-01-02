@@ -357,7 +357,7 @@ jobs:
       # 1. Login to Registry (Using the runner's temporary token)
       # This allows the device (Laptop or S-CORE) to pull your private image
       - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       # 2. Pull the Exact Version
       # We pull the specific SHA tag created in the previous stage
