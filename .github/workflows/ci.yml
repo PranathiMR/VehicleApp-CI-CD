@@ -375,11 +375,13 @@ jobs:
       - name: Pull Release Image
         run: docker pull ${{ env.IMAGE_URI }}
 
-      # 4. Stop Old Container
+      # 4. Stop Old Container (Windows PowerShell Version)
       - name: Stop Previous Deployment
         run: |
-          docker stop seat-adjuster || true
-          docker rm seat-adjuster || true
+          docker stop seat-adjuster -ErrorAction SilentlyContinue
+          docker rm seat-adjuster -ErrorAction SilentlyContinue
+        # This tells GitHub to ignore errors (like "container not found") for this step
+        continue-on-error: true
 
       # 5. Run New Container
       - name: Start Application
