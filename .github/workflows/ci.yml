@@ -363,38 +363,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT }}
 
-      # 2. Pull the Exact Version
-      # We pull the specific SHA tag created in the previous stage
-      - name: Pull Release Image
-        run: docker pull ghcr.io/${{ github.repository }}/vehicle-app:sha-${{ github.sha }}
+      # 2. NEW STEP: Calculate the lowercase image name
+      # Docker fails if we send "PranathiMR", so we convert it to "pranathimr"
+      - name: Set Environment Variables
+        shell: powershell
+        run: |
+          $repoLower = "${{ github.repository }}".ToLower()
+          echo "IMAGE_URI=ghcr.io/$repoLower/vehicle-app:sha-${{ github.sha }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # 3. Stop Old Container (Cleanup)
-      # '|| true' prevents failure if the container is not running yet
+      # 3. Pull using the new lowercase variable
+      - name: Pull Release Image
+        run: docker pull ${{ env.IMAGE_URI }}
+
+      # 4. Stop Old Container
       - name: Stop Previous Deployment
         run: |
           docker stop seat-adjuster || true
           docker rm seat-adjuster || true
 
-      # 4. Run New Container
-      # We use '--network host' to ensure connection to the vehicle network
+      # 5. Run New Container
       - name: Start Application
         run: |
-          docker run -d \
-            --name seat-adjuster \
-            --restart unless-stopped \
-            --network host \
-            -e SDV_MQTT_ADDRESS=mosquitto:1883 \
-            ghcr.io/${{ github.repository }}/vehicle-app:sha-${{ github.sha }}
+          docker run -d `
+            --name seat-adjuster `
+            --restart unless-stopped `
+            --network host `
+            -e SDV_MQTT_ADDRESS=mosquitto:1883 `
+            ${{ env.IMAGE_URI }}
 
-      # 5. Verification
+      # 6. Verification
       - name: Verify Deployment
         run: |
           sleep 5
-          # Check if the container is still running
-          if [ "$(docker inspect -f '{{.State.Running}}' seat-adjuster)" = "true" ]; then
-            echo "✅ S-CORE Deployment Successful"
-          else
-            echo "❌ Failed to start on S-CORE"
+          if ("$(docker inspect -f '{{.State.Running}}' seat-adjuster)" -eq "true") {
+            Write-Host "✅ S-CORE Deployment Successful"
+          } else {
+            Write-Host "❌ Failed to start on S-CORE"
             docker logs seat-adjuster
             exit 1
-          fi
+          }
