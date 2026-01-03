@@ -375,13 +375,17 @@ jobs:
       - name: Pull Release Image
         run: docker pull ${{ env.IMAGE_URI }}
 
-      # 4. Stop Old Container (Windows PowerShell Version)
+      # 4. Stop Old Container (Safe Check)
       - name: Stop Previous Deployment
+        shell: powershell
         run: |
-          docker stop seat-adjuster -ErrorAction SilentlyContinue
-          docker rm seat-adjuster -ErrorAction SilentlyContinue
-        # This tells GitHub to ignore errors (like "container not found") for this step
-        continue-on-error: true
+          # Check if the container exists (returns the ID if true, empty if false)
+          if (docker ps -a -q -f name=seat-adjuster) {
+            Write-Host "Found existing container. Removing it..."
+            docker rm -f seat-adjuster
+          } else {
+            Write-Host "No previous container found. Skipping cleanup."
+          }
 
       # 5. Run New Container
       - name: Start Application
