@@ -304,6 +304,10 @@ jobs:
           name: seat-adjuster-bin
           path: vehicle-app-cpp-sdk/build-seat/bin
 
+      - name: Lowercase Repo Name
+        run: |
+          echo "REPO_LOWER=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
+
       # -------------------------------------------------
       # STAGE 2.8: Build and Tag Release
       # We prepare the tags (SHA for traceability, Latest for convenience)
