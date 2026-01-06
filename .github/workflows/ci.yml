@@ -339,72 +339,20 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-    # -------------------------------------------------
-  # 6. Deploy to S-CORE (Hardware Agnostic)
+  # -------------------------------------------------
+  # 6. Deploy to S-CORE (Calling the Abstract Workflow)
   # -------------------------------------------------
   deploy-score:
-    name: Deploy to S-CORE Target
-    # CRITICAL: We look for ANY device with the label 'score-target'
-    runs-on: [self-hosted, score-target]
+    name: Trigger S-CORE Deployment
     needs: release-image
     if: github.ref == 'refs/heads/main'
-
-    permissions:
-      contents: read
-      packages: read
-
-    steps:
-      # 1. Login to Registry (Using the runner's temporary token)
-      # This allows the device (Laptop or S-CORE) to pull your private image
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
-
-      # 2. NEW STEP: Calculate the lowercase image name
-      # Docker fails if we send "PranathiMR", so we convert it to "pranathimr"
-      - name: Set Environment Variables
-        shell: powershell
-        run: |
-          $repoLower = "${{ github.repository }}".ToLower()
-          echo "IMAGE_URI=ghcr.io/$repoLower/vehicle-app:sha-${{ github.sha }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      # 3. Pull using the new lowercase variable
-      - name: Pull Release Image
-        run: docker pull ${{ env.IMAGE_URI }}
-
-      # 4. Stop Old Container (Safe Check)
-      - name: Stop Previous Deployment
-        shell: powershell
-        run: |
-          # Check if the container exists (returns the ID if true, empty if false)
-          if (docker ps -a -q -f name=seat-adjuster) {
-            Write-Host "Found existing container. Removing it..."
-            docker rm -f seat-adjuster
-          } else {
-            Write-Host "No previous container found. Skipping cleanup."
-          }
-
-      # 5. Run New Container
-      - name: Start Application
-        run: |
-          docker run -d `
-            --name seat-adjuster `
-            --restart unless-stopped `
-            --network host `
-            -e SDV_MQTT_ADDRESS=mosquitto:1883 `
-            ${{ env.IMAGE_URI }}
-
-      # 6. Verification
-      - name: Verify Deployment
-        run: |
-          sleep 5
-          if ("$(docker inspect -f '{{.State.Running}}' seat-adjuster)" -eq "true") {
-            Write-Host "✅ S-CORE Deployment Successful"
-          } else {
-            Write-Host "❌ Failed to start on S-CORE"
-            docker logs seat-adjuster
-            exit 1
-          }
+    
+    # CALL THE REUSABLE WORKFLOW FILE
+    uses: ./.github/workflows/cd-deploy.yml
+    with:
+      # We calculate the lowercase URI here, before passing it
+      image_uri: ghcr.io/pranathimr/vehicle-app:sha-${{ github.sha }}
+      container_name: seat-adjuster
+      docker_run_args: "-e SDV_MQTT_ADDRESS=mosquitto:1883 --network host"
+    secrets:
+      registry_token: ${{ secrets.GHCR_PAT }}
