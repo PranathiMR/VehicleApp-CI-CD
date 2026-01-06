@@ -1,0 +1,63 @@
+name: Vehicle App CI Orchestrator
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  # ----------------------------------------------------------------
+  # Stage 0: Setup & Configuration
+  # Logic: Calculate the exact Lowercase Image URI using YOUR snippet
+  # ----------------------------------------------------------------
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.calc.outputs.image_uri }}
+    steps:
+      - id: calc
+        run: |
+          # 1. Apply your specific Lowercase Logic
+          OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
+          
+          # 2. Construct the full URI (Owner + Repo Name + Tag)
+          # We define the app name 'vehicle-app' here. 
+          # Future users can change this string if they fork the repo.
+          FULL_URI="ghcr.io/${OWNER_LOWER}/vehicle-app"
+          
+          # 3. Save it as an Output for other jobs to use
+          echo "image_uri=${FULL_URI}:sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+  # ----------------------------------------------------------------
+  # Stage 1: Call Build Module
+  # ----------------------------------------------------------------
+  call-build:
+    needs: setup
+    uses: ./.github/workflows/module-build.yml
+
+  # ----------------------------------------------------------------
+  # Stage 2: Call Docker Module
+  # ----------------------------------------------------------------
+  call-docker:
+    needs: [setup, call-build]
+    uses: ./.github/workflows/module-docker.yml
+    with:
+      # Pass the calculated lowercase URI
+      image_uri: ${{ needs.setup.outputs.image_uri }}
+    secrets:
+      registry_token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----------------------------------------------------------------
+  # Stage 3: Call Deploy Module
+  # ----------------------------------------------------------------
+  call-deploy:
+    needs: [setup, call-docker]
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/module-deploy.yml
+    with:
+      # Pass the SAME lowercase URI so Pull matches Push
+      image_uri: ${{ needs.setup.outputs.image_uri }}
+      container_name: seat-adjuster
+      docker_run_args: "-e SDV_MQTT_ADDRESS=mosquitto:1883 --network host"
+    secrets:
+      runner_token: ${{ secrets.GHCR_PAT }}

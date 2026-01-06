@@ -1,0 +1,38 @@
+name: Module - Build & Test
+
+on:
+  workflow_call:
+
+jobs:
+  build-and-test:
+    name: Build & Unit Test
+    runs-on: ubuntu-latest
+    container: ghcr.io/eclipse-velocitas/devcontainer-base-images/cpp:latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+
+      - name: Install SDK Dependencies
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          chmod +x install_dependencies.sh build.sh
+          ./install_dependencies.sh
+          ./build.sh
+
+      - name: Build Seat Adjuster
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          cmake -S . -B build-seat -DSDK_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-seat --target example-seatadjusterapp
+
+      - name: Run Unit Tests
+        working-directory: vehicle-app-cpp-sdk/build-seat
+        run: ctest --output-on-failure
+
+      # Upload the binary so the Docker module can find it
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: seat-adjuster-bin
+          path: vehicle-app-cpp-sdk/build-seat/bin

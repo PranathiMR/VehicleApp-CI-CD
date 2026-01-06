@@ -1,0 +1,81 @@
+name: Module - Docker & Integration
+
+on:
+  workflow_call:
+    inputs:
+      image_uri:
+        required: true
+        type: string
+    secrets:
+      registry_token:
+        required: true
+
+jobs:
+  # Job A: Build & Security Scan
+  docker-build:
+    name: Docker Build & Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+
+      - name: Download Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: seat-adjuster-bin
+          path: vehicle-app-cpp-sdk/build-seat/bin
+
+      - name: Build Test Image
+        run: docker build -t app:test .
+
+      - name: Trivy Security Scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: 'app:test'
+          exit-code: 1
+          severity: HIGH,CRITICAL
+
+  # Job B: Integration Tests (Strictly NEEDS Job A)
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/download-artifact@v4
+        with:
+          name: seat-adjuster-bin
+          path: vehicle-app-cpp-sdk/build-seat/bin
+
+      - name: Setup & Run Integration Tests
+        run: |
+          echo "listener 1883" > mosquitto.conf
+          echo "allow_anonymous true" >> mosquitto.conf
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build --exit-code-from integration-test-runner
+
+  # Job C: Publish to Registry (NEEDS Job B + Only on Main)
+  publish-image:
+    name: Publish to Registry
+    runs-on: ubuntu-latest
+    needs: integration-test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/download-artifact@v4
+        with:
+          name: seat-adjuster-bin
+          path: vehicle-app-cpp-sdk/build-seat/bin
+      
+      - name: Login & Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # ABSTRACT: We use the exact URI passed from the Main file.
+          # This replaces the need for "metadata-action" here, 
+          # because the Main file already did the naming work.
+          tags: ${{ inputs.image_uri }}
+          secrets:
+            token: ${{ secrets.registry_token }}
