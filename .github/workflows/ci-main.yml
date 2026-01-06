@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
   pull_request:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # ----------------------------------------------------------------
   # Stage 0: Setup & Configuration
