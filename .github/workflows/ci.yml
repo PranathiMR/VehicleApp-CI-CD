@@ -316,7 +316,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/vehicle-app
+          images: ghcr.io/${{ env.REPO_LOWER }}/vehicle-app
           tags: |
             type=raw,value=latest
             type=sha,format=long
