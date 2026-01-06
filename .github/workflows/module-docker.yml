@@ -68,14 +68,19 @@ jobs:
           name: seat-adjuster-bin
           path: vehicle-app-cpp-sdk/build-seat/bin
       
-      - name: Login & Push
+      # FIX: Explicit Login Step
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.registry_token }}
+
+      # FIX: Build & Push (Removed the invalid 'secrets' block)
+      - name: Build and Push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          # ABSTRACT: We use the exact URI passed from the Main file.
-          # This replaces the need for "metadata-action" here, 
-          # because the Main file already did the naming work.
+          # We use the exact URI passed from the Main file
           tags: ${{ inputs.image_uri }}
-          secrets:
-            token: ${{ secrets.registry_token }}
