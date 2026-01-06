@@ -18,19 +18,38 @@ jobs:
         run: |
           chmod +x install_dependencies.sh build.sh
           ./install_dependencies.sh
-          ./build.sh
+          
+          # Force generate a default Conan profile if missing
+          conan profile detect --force || true
+
+      # --- FIX: Explicitly Install Release Dependencies ---
+      - name: Install Conan Dependencies (Release)
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          conan install . \
+            -s build_type=Release \
+            -of build-linux-x86_64/Release \
+            --build=missing
+
+      # ----------------------------------------------------
 
       - name: Build Seat Adjuster
         working-directory: vehicle-app-cpp-sdk
         run: |
-          cmake -S . -B build-seat -DSDK_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release
+          # Now this toolchain path is guaranteed to exist
+          cmake -S . -B build-seat \
+            -DSDK_BUILD_EXAMPLES=ON \
+            -DSDK_BUILD_TESTS=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Release/generators/conan_toolchain.cmake
+          
           cmake --build build-seat --target example-seatadjusterapp
 
       - name: Run Unit Tests
         working-directory: vehicle-app-cpp-sdk/build-seat
         run: ctest --output-on-failure
 
-      # Upload the binary so the Docker module can find it
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
