@@ -6,36 +6,50 @@ on:
       image_uri:
         required: true
         type: string
+      criticality:
+        required: true
+        type: string
     secrets:
       registry_token:
         required: true
 
 jobs:
-  # Job A: Build & Security Scan
+  # Job A: Build & Scan
   docker-build:
     name: Docker Build & Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
-
-      - name: Download Binary
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: seat-adjuster-bin
           path: vehicle-app-cpp-sdk/build-seat/bin
 
-      - name: Build Test Image
-        run: docker build -t app:test .
+      # POINT 5: Clean Docker Build (--no-cache)
+      - name: Build Test Image (Clean)
+        run: docker build --no-cache -t app:test .
 
-      - name: Trivy Security Scan
+      # POINT 2: Conditional Trivy Scan
+      - name: Run Trivy Scan
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: 'app:test'
+          format: 'table'
+          output: 'trivy-results.txt'
           exit-code: 1
-          severity: HIGH,CRITICAL
+          # Logic: If High Crit -> Fail on LOW,MED,HIGH,CRIT. Else -> HIGH,CRIT only.
+          severity: ${{ inputs.criticality == 'high' && 'LOW,MEDIUM,HIGH,CRITICAL' || 'HIGH,CRITICAL' }}
 
-  # Job B: Integration Tests (Strictly NEEDS Job A)
+      # POINT 4: Upload Security Report
+      - name: Upload Security Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: trivy-results.txt
+
+  # Job B: Integration Tests
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
@@ -48,13 +62,30 @@ jobs:
           name: seat-adjuster-bin
           path: vehicle-app-cpp-sdk/build-seat/bin
 
-      - name: Setup & Run Integration Tests
+      - name: Run Integration Tests
         run: |
           echo "listener 1883" > mosquitto.conf
           echo "allow_anonymous true" >> mosquitto.conf
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build --exit-code-from integration-test-runner
 
-  # Job C: Publish to Registry (NEEDS Job B + Only on Main)
+      # POINT 4: Upload Logs
+      - name: Dump Logs
+        if: always()
+        run: docker compose logs > full_test_logs.txt
+
+      - name: Upload Logs Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-logs
+          path: full_test_logs.txt
+
+      # POINT 3: Auto-Teardown (Guaranteed by 'if: always()')
+      - name: Teardown Environment
+        if: always()
+        run: docker compose down -v
+
+  # Job C: Publish
   publish-image:
     name: Publish to Registry
     runs-on: ubuntu-latest
@@ -68,7 +99,6 @@ jobs:
           name: seat-adjuster-bin
           path: vehicle-app-cpp-sdk/build-seat/bin
       
-      # FIX: Explicit Login Step
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -76,11 +106,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.registry_token }}
 
-      # FIX: Build & Push (Removed the invalid 'secrets' block)
+      # POINT 6: Verify Unique Tag
+      - name: Verify Tag Uniqueness
+        run: |
+          if docker manifest inspect ${{ inputs.image_uri }} > /dev/null 2>&1; then
+            echo "❌ Error: Tag ${{ inputs.image_uri }} already exists in registry!"
+            echo "We do not overwrite existing tags for safety."
+            exit 1
+          else
+            echo "✅ Tag is unique. Proceeding."
+          fi
+
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          # We use the exact URI passed from the Main file
+          # POINT 5: Clean Build for Production too
+          no-cache: true
           tags: ${{ inputs.image_uri }}

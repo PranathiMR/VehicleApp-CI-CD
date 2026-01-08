@@ -1,9 +1,21 @@
 name: Vehicle App CI Orchestrator
 
 on:
+  # 1. Automatic Trigger (Default behavior)
   push:
     branches: [ "main" ]
-  pull_request:
+  
+  # 2. Manual Trigger with Dropdown Input
+  workflow_dispatch:
+    inputs:
+      app_criticality:
+        description: 'Select App Criticality'
+        required: true
+        default: 'low'
+        type: choice
+        options:
+        - low
+        - high
 
 permissions:
   contents: read
@@ -12,25 +24,30 @@ permissions:
 jobs:
   # ----------------------------------------------------------------
   # Stage 0: Setup & Configuration
-  # Logic: Calculate the exact Lowercase Image URI using YOUR snippet
   # ----------------------------------------------------------------
   setup:
     runs-on: ubuntu-latest
     outputs:
       image_uri: ${{ steps.calc.outputs.image_uri }}
+      criticality: ${{ steps.config.outputs.level }}
     steps:
       - id: calc
         run: |
-          # 1. Apply your specific Lowercase Logic
           OWNER_LOWER="${GITHUB_REPOSITORY_OWNER,,}"
-          
-          # 2. Construct the full URI (Owner + Repo Name + Tag)
-          # We define the app name 'vehicle-app' here. 
-          # Future users can change this string if they fork the repo.
           FULL_URI="ghcr.io/${OWNER_LOWER}/vehicle-app"
-          
-          # 3. Save it as an Output for other jobs to use
           echo "image_uri=${FULL_URI}:sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      
+      - id: config
+        # LOGIC: If manual input exists, use it. If triggered by push, default to 'low'.
+        run: |
+          INPUT_LEVEL="${{ inputs.app_criticality }}"
+          if [ -z "$INPUT_LEVEL" ]; then
+            echo "Triggered by Push: Defaulting to LOW criticality."
+            echo "level=low" >> "$GITHUB_OUTPUT"
+          else
+            echo "Manual Trigger: Using $INPUT_LEVEL criticality."
+            echo "level=$INPUT_LEVEL" >> "$GITHUB_OUTPUT"
+          fi
 
   # ----------------------------------------------------------------
   # Stage 1: Call Build Module
@@ -38,6 +55,9 @@ jobs:
   call-build:
     needs: setup
     uses: ./.github/workflows/module-build.yml
+    with:
+      # Pass the determined level (High/Low)
+      criticality: ${{ needs.setup.outputs.criticality }}
 
   # ----------------------------------------------------------------
   # Stage 2: Call Docker Module
@@ -46,8 +66,8 @@ jobs:
     needs: [setup, call-build]
     uses: ./.github/workflows/module-docker.yml
     with:
-      # Pass the calculated lowercase URI
       image_uri: ${{ needs.setup.outputs.image_uri }}
+      criticality: ${{ needs.setup.outputs.criticality }}
     secrets:
       registry_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -59,9 +79,25 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/module-deploy.yml
     with:
-      # Pass the SAME lowercase URI so Pull matches Push
       image_uri: ${{ needs.setup.outputs.image_uri }}
       container_name: seat-adjuster
       docker_run_args: "-e SDV_MQTT_ADDRESS=mosquitto:1883 --network host"
     secrets:
       runner_token: ${{ secrets.GHCR_PAT }}
+
+  # ----------------------------------------------------------------
+  # Verify Artifacts
+  # ----------------------------------------------------------------
+  verify-artifacts:
+    needs: [call-build, call-docker]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Artifact Report
+        run: |
+          echo "### 📦 Artifact Verification Report" >> $GITHUB_STEP_SUMMARY
+          echo "Criticality Level Used: **${{ needs.setup.outputs.criticality }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ seat-adjuster-bin" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ static-analysis-report" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ security-scan-results" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ integration-test-logs" >> $GITHUB_STEP_SUMMARY

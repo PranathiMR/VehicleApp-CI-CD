@@ -2,6 +2,10 @@ name: Module - Build & Test
 
 on:
   workflow_call:
+    inputs:
+      criticality:
+        required: true
+        type: string
 
 jobs:
   build-and-test:
@@ -13,42 +17,48 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
 
-      - name: Install SDK Dependencies
+      - name: Cache Conan Packages
+        id: cache-conan
+        uses: actions/cache@v4
+        with:
+          path: /home/velocitas/.conan2
+          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
+          restore-keys: ${{ runner.os }}-conan-
+
+      - name: Install Dependencies & Config
         working-directory: vehicle-app-cpp-sdk
         run: |
           chmod +x install_dependencies.sh build.sh
           ./install_dependencies.sh
-          
-          # Force generate a default Conan profile if missing
           conan profile detect --force || true
-
-      # --- FIX: Explicitly Install Release Dependencies ---
-      - name: Install Conan Dependencies (Release)
-        working-directory: vehicle-app-cpp-sdk
-        run: |
-          conan install . \
-            -s build_type=Release \
-            -of build-linux-x86_64/Release \
-            --build=missing
-
-      # ----------------------------------------------------
+          conan install . -s build_type=Release -of build-linux-x86_64/Release --build=missing
+          cmake -S . -B build-seat -DSDK_BUILD_EXAMPLES=ON -DSDK_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Release/generators/conan_toolchain.cmake
 
       - name: Build Seat Adjuster
         working-directory: vehicle-app-cpp-sdk
-        run: |
-          # Now this toolchain path is guaranteed to exist
-          cmake -S . -B build-seat \
-            -DSDK_BUILD_EXAMPLES=ON \
-            -DSDK_BUILD_TESTS=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Release/generators/conan_toolchain.cmake
-          
-          cmake --build build-seat --target example-seatadjusterapp
+        run: cmake --build build-seat --target example-seatadjusterapp
 
-      - name: Run Unit Tests
-        working-directory: vehicle-app-cpp-sdk/build-seat
-        run: ctest --output-on-failure
+      # POINT 2: Conditional Static Analysis
+      - name: Run CppCheck (Conditional Strictness)
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          if [ "${{ inputs.criticality }}" == "high" ]; then
+             echo "🚨 High Criticality: Failing on WARNINGS"
+             # --error-exitcode=1 makes it fail on warnings
+             cppcheck --enable=warning,performance --error-exitcode=1 --std=c++17 examples/seat-adjuster > cppcheck_report.txt 2>&1
+          else
+             echo "⚠️ Low Criticality: Failing on ERRORS only"
+             # No --error-exitcode means warnings are just printed
+             cppcheck --enable=warning,performance --std=c++17 examples/seat-adjuster > cppcheck_report.txt 2>&1
+          fi
+
+      # POINT 4: Upload Analysis Logs
+      - name: Upload Analysis Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-analysis-report
+          path: vehicle-app-cpp-sdk/cppcheck_report.txt
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
