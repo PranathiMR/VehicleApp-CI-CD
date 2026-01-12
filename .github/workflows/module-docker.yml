@@ -3,12 +3,29 @@ name: Module - Docker & Integration
 on:
   workflow_call:
     inputs:
+      # ABSTRACT: The full image tag to build/push (e.g., ghcr.io/user/app:1.0.0)
       image_uri:
         required: true
         type: string
+      # ABSTRACT: Safety level (high/low) to control Trivy severity
       criticality:
         required: true
         type: string
+      # ABSTRACT: Name of the binary artifact from the Build Module
+      artifact_name:
+        required: true
+        type: string
+      # ABSTRACT: Directory containing Dockerfile and compose files (default: .)
+      context_path:
+        required: false
+        type: string
+        default: "."
+      # ABSTRACT: Where to place the binary so Dockerfile can COPY it
+      # Default matches your SDK structure: vehicle-app-cpp-sdk/build-seat/bin
+      binary_dest_path:
+        required: false
+        type: string
+        default: "bin" 
     secrets:
       registry_token:
         required: true
@@ -21,14 +38,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
+
+      # ABSTRACT: Download the specific artifact
       - uses: actions/download-artifact@v4
         with:
-          name: seat-adjuster-bin
-          path: vehicle-app-cpp-sdk/build-seat/bin
+          name: ${{ inputs.artifact_name }}
+          # Place binary where Dockerfile expects it (relative to context)
+          path: ${{ inputs.context_path }}/${{ inputs.binary_dest_path }}
 
       # POINT 5: Clean Docker Build (--no-cache)
       - name: Build Test Image (Clean)
-        run: docker build --no-cache -t app:test .
+        # Build inside the context path
+        run: docker build --no-cache -t app:test ${{ inputs.context_path }}
 
       # POINT 2: Conditional Trivy Scan
       - name: Run Trivy Scan
@@ -57,20 +78,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
+
+      # ABSTRACT: Download binary again for the integration test context
       - uses: actions/download-artifact@v4
         with:
-          name: seat-adjuster-bin
-          path: vehicle-app-cpp-sdk/build-seat/bin
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.context_path }}/${{ inputs.binary_dest_path }}
 
       - name: Run Integration Tests
+        working-directory: ${{ inputs.context_path }} # Ensure we run where docker-compose.yml is
         run: |
           echo "listener 1883" > mosquitto.conf
           echo "allow_anonymous true" >> mosquitto.conf
+          
+          # We use the abstract context path implicitly by setting working-directory above
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build --exit-code-from integration-test-runner
 
       # POINT 4: Upload Logs
       - name: Dump Logs
         if: always()
+        working-directory: ${{ inputs.context_path }}
         run: docker compose logs > full_test_logs.txt
 
       - name: Upload Logs Artifact
@@ -78,11 +105,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: integration-test-logs
-          path: full_test_logs.txt
+          path: ${{ inputs.context_path }}/full_test_logs.txt
 
       # POINT 3: Auto-Teardown (Guaranteed by 'if: always()')
       - name: Teardown Environment
         if: always()
+        working-directory: ${{ inputs.context_path }}
         run: docker compose down -v
 
   # Job C: Publish
@@ -94,10 +122,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
+
+      # ABSTRACT: Download binary for the final build
       - uses: actions/download-artifact@v4
         with:
-          name: seat-adjuster-bin
-          path: vehicle-app-cpp-sdk/build-seat/bin
+          name: ${{ inputs.artifact_name }}
+          path: ${{ inputs.context_path }}/${{ inputs.binary_dest_path }}
       
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -120,7 +150,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ inputs.context_path }}
           push: true
           # POINT 5: Clean Build for Production too
           no-cache: true

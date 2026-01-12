@@ -1,4 +1,4 @@
-name: Module - Build & Test
+name: Module - Build & Test (SDK)
 
 on:
   workflow_call:
@@ -6,11 +6,21 @@ on:
       criticality:
         required: true
         type: string
+        description: "Safety level: 'high' (fail on warnings) or 'low' (fail on errors)"
+      cmake_target:
+        required: true
+        type: string
+        description: "The CMake target name (e.g., example-seatadjusterapp)"
+      source_dir:
+        required: true
+        type: string
+        description: "Path to source code (e.g., examples/seat-adjuster)"
 
 jobs:
   build-and-test:
-    name: Build & Unit Test
+    name: Build, Analyze & Test
     runs-on: ubuntu-latest
+    # Uses the official Velocitas C++ SDK environment
     container: ghcr.io/eclipse-velocitas/devcontainer-base-images/cpp:latest
     
     steps:
@@ -18,50 +28,74 @@ jobs:
         with: { submodules: recursive }
 
       - name: Cache Conan Packages
-        id: cache-conan
         uses: actions/cache@v4
         with:
           path: /home/velocitas/.conan2
           key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.py') }}
           restore-keys: ${{ runner.os }}-conan-
 
-      - name: Install Dependencies & Config
+      - name: Install Dependencies
         working-directory: vehicle-app-cpp-sdk
         run: |
-          chmod +x install_dependencies.sh build.sh
+          chmod +x install_dependencies.sh
           ./install_dependencies.sh
           conan profile detect --force || true
           conan install . -s build_type=Release -of build-linux-x86_64/Release --build=missing
-          cmake -S . -B build-seat -DSDK_BUILD_EXAMPLES=ON -DSDK_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Release/generators/conan_toolchain.cmake
 
-      - name: Build Seat Adjuster
-        working-directory: vehicle-app-cpp-sdk
-        run: cmake --build build-seat --target example-seatadjusterapp
-
-      # POINT 2: Conditional Static Analysis
-      - name: Run CppCheck (Conditional Strictness)
+      # 1. COMPILATION (Build App & Tests)
+      - name: Build App & Tests
         working-directory: vehicle-app-cpp-sdk
         run: |
+          # Configure CMake with Tests ENABLED
+          cmake -S . -B build-app \
+            -DSDK_BUILD_EXAMPLES=ON \
+            -DSDK_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_TOOLCHAIN_FILE=build-linux-x86_64/Release/generators/conan_toolchain.cmake
+          
+          # Build the specific app target
+          cmake --build build-app --target ${{ inputs.cmake_target }}
+          
+          # Build test targets (compiles the tests)
+          cmake --build build-app
+
+      # 2. STATIC ANALYSIS (Fail-Fast: Runs before Unit Tests)
+      - name: Run Clang-Tidy
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          find ${{ inputs.source_dir }} -name "*.cpp" | xargs clang-tidy -p build-app --header-filter=${{ inputs.source_dir }}/
+
+      - name: Run CppCheck
+        working-directory: vehicle-app-cpp-sdk
+        run: |
+          CHECK_OPTS="--enable=warning,performance --std=c++17"
+          TARGET_DIR="${{ inputs.source_dir }}"
+          
           if [ "${{ inputs.criticality }}" == "high" ]; then
              echo "🚨 High Criticality: Failing on WARNINGS"
-             # --error-exitcode=1 makes it fail on warnings
-             cppcheck --enable=warning,performance --error-exitcode=1 --std=c++17 examples/seat-adjuster > cppcheck_report.txt 2>&1
+             cppcheck $CHECK_OPTS --error-exitcode=1 $TARGET_DIR > cppcheck_report.txt 2>&1
           else
              echo "⚠️ Low Criticality: Failing on ERRORS only"
-             # No --error-exitcode means warnings are just printed
-             cppcheck --enable=warning,performance --std=c++17 examples/seat-adjuster > cppcheck_report.txt 2>&1
+             cppcheck $CHECK_OPTS $TARGET_DIR > cppcheck_report.txt 2>&1
           fi
 
-      # POINT 4: Upload Analysis Logs
-      - name: Upload Analysis Artifacts
-        if: always()
+      - name: Upload Analysis Report
+        if: always() 
         uses: actions/upload-artifact@v4
         with:
-          name: static-analysis-report
+          name: analysis-report-${{ inputs.cmake_target }}
           path: vehicle-app-cpp-sdk/cppcheck_report.txt
 
+      # 3. UNIT TESTS (Runs only if Static Analysis passes)
+      - name: Run Unit Tests
+        working-directory: vehicle-app-cpp-sdk/build-app
+        run: ctest --output-on-failure
+
+      # 4. ARTIFACT UPLOAD
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: seat-adjuster-bin
-          path: vehicle-app-cpp-sdk/build-seat/bin
+          # Unique artifact name to prevent conflicts
+          name: binary-${{ inputs.cmake_target }}
+          path: vehicle-app-cpp-sdk/build-app/bin
