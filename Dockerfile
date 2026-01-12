@@ -21,7 +21,10 @@ FROM ubuntu:22.04
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y libstdc++6 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y libstdc++6 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder stage
 # Note: Adjust the path '/workspace/build/bin' if your build.sh outputs somewhere else
