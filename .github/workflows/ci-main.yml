@@ -93,11 +93,10 @@ jobs:
     uses: ./.github/workflows/module-deploy.yml
     with:
       # Map the image_uri from setup to the input expected by the module
-      image_ref: ${{ needs.setup.outputs.image_uri }}
+      image_uri: ${{ needs.setup.outputs.image_uri }}
       container_name: "seat-adjuster-service"
     secrets:
-      registry_username: ${{ github.actor }}
-      registry_password: ${{ secrets.GITHUB_TOKEN }}
+      runner_token: ${{ secrets.GITHUB_TOKEN }}
 
   # ----------------------------------------------------------------
   # Verify Artifacts (Reporting)
