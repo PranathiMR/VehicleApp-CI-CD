@@ -3,25 +3,24 @@ name: Module - Docker & Integration
 on:
   workflow_call:
     inputs:
-      # ABSTRACT: The full image tag to build/push (e.g., ghcr.io/user/app:1.0.0)
+      # The full image tag to build/push
       image_uri:
         required: true
         type: string
-      # ABSTRACT: Safety level (high/low) to control Trivy severity
+      # Safety level (high/low) to control Trivy severity
       criticality:
         required: true
         type: string
-      # ABSTRACT: Name of the binary artifact from the Build Module
+      # Name of the binary artifact from the Build Module
       artifact_name:
         required: true
         type: string
-      # ABSTRACT: Directory containing Dockerfile and compose files (default: .)
+      # Directory containing Dockerfile and compose files
       context_path:
         required: false
         type: string
         default: "."
-      # ABSTRACT: Where to place the binary so Dockerfile can COPY it
-      # Default matches your SDK structure: vehicle-app-cpp-sdk/build-seat/bin
+      # Location of the binary for Docker access
       binary_dest_path:
         required: false
         type: string
@@ -39,19 +38,19 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
 
-      # ABSTRACT: Download the specific artifact
+      # Download the specific artifact
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
           # Place binary where Dockerfile expects it (relative to context)
           path: ${{ inputs.context_path }}/${{ inputs.binary_dest_path }}
 
-      # POINT 5: Clean Docker Build (--no-cache)
+      # Clean Docker Build
       - name: Build Test Image (Clean)
         # Build inside the context path
         run: docker build --no-cache -t app:test ${{ inputs.context_path }}
 
-      # POINT 2: Conditional Trivy Scan
+      # Conditional Trivy Scan
       - name: Run Trivy Scan
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -59,10 +58,9 @@ jobs:
           format: 'table'
           output: 'trivy-results.txt'
           exit-code: 1
-          # Logic: If High Crit -> Fail on LOW,MED,HIGH,CRIT. Else -> HIGH,CRIT only.
-          severity: ${{ inputs.criticality == 'high' && 'LOW,MEDIUM,HIGH,CRITICAL' || 'HIGH,CRITICAL' }}
+          severity: ${{ inputs.criticality == 'high' && 'MEDIUM,HIGH,CRITICAL' || 'HIGH,CRITICAL' }}
 
-      # POINT 4: Upload Security Report
+      # Upload Security Report
       - name: Upload Security Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,14 +77,14 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
 
-      # ABSTRACT: Download binary again for the integration test context
+      # Download binary again for the integration test context
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ inputs.context_path }}/${{ inputs.binary_dest_path }}
 
       - name: Run Integration Tests
-        working-directory: ${{ inputs.context_path }} # Ensure we run where docker-compose.yml is
+        working-directory: ${{ inputs.context_path }}
         run: |
           echo "listener 1883" > mosquitto.conf
           echo "allow_anonymous true" >> mosquitto.conf
@@ -94,7 +92,7 @@ jobs:
           # We use the abstract context path implicitly by setting working-directory above
           docker compose -f docker-compose.yml -f docker-compose.ci.yml up --build --exit-code-from integration-test-runner
 
-      # POINT 4: Upload Logs
+      # Upload Logs
       - name: Dump Logs
         if: always()
         working-directory: ${{ inputs.context_path }}
@@ -107,7 +105,7 @@ jobs:
           name: integration-test-logs
           path: ${{ inputs.context_path }}/full_test_logs.txt
 
-      # POINT 3: Auto-Teardown (Guaranteed by 'if: always()')
+      # Auto-Teardown (Guaranteed by 'if: always()')
       - name: Teardown Environment
         if: always()
         working-directory: ${{ inputs.context_path }}
@@ -123,7 +121,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { submodules: recursive }
 
-      # ABSTRACT: Download binary for the final build
+      # Download binary for the final build
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifact_name }}
@@ -136,15 +134,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.registry_token }}
 
-      # POINT 6: Verify Unique Tag
+      # Verify Unique Tag
       - name: Verify Tag Uniqueness
         run: |
           if docker manifest inspect ${{ inputs.image_uri }} > /dev/null 2>&1; then
-            echo "❌ Error: Tag ${{ inputs.image_uri }} already exists in registry!"
+            echo "Error: Tag ${{ inputs.image_uri }} already exists in registry!"
             echo "We do not overwrite existing tags for safety."
             exit 1
           else
-            echo "✅ Tag is unique. Proceeding."
+            echo "Tag is unique. Proceeding."
           fi
 
       - name: Build and Push
@@ -152,6 +150,6 @@ jobs:
         with:
           context: ${{ inputs.context_path }}
           push: true
-          # POINT 5: Clean Build for Production too
+          # Clean Build for Production too
           no-cache: true
           tags: ${{ inputs.image_uri }}

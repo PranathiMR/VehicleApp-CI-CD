@@ -20,7 +20,7 @@ jobs:
   build-and-test:
     name: Build, Analyze & Test
     runs-on: ubuntu-latest
-    # Uses the official Velocitas C++ SDK environment
+    
     container: ghcr.io/eclipse-velocitas/devcontainer-base-images/cpp:latest
     
     steps:
@@ -42,7 +42,7 @@ jobs:
           conan profile detect --force || true
           conan install . -s build_type=Release -of build-linux-x86_64/Release --build=missing
 
-      # 1. COMPILATION (Build App & Tests)
+      # Build App & Tests
       - name: Build App & Tests
         working-directory: vehicle-app-cpp-sdk
         run: |
@@ -60,7 +60,7 @@ jobs:
           # Build test targets (compiles the tests)
           cmake --build build-app
 
-      # 2. STATIC ANALYSIS (Fail-Fast: Runs before Unit Tests)
+      # Static Analysis - Clang Tidy and Cppcheck
       - name: Run Clang-Tidy
         working-directory: vehicle-app-cpp-sdk
         run: |
@@ -87,12 +87,12 @@ jobs:
           name: analysis-report-${{ inputs.cmake_target }}
           path: vehicle-app-cpp-sdk/cppcheck_report.txt
 
-      # 3. UNIT TESTS (Runs only if Static Analysis passes)
+      # Unit test (Runs only if Static Analysis passes)
       - name: Run Unit Tests
         working-directory: vehicle-app-cpp-sdk/build-app
         run: ctest --output-on-failure
 
-      # 4. ARTIFACT UPLOAD
+      # Artifacts upload
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
